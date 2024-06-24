@@ -8,7 +8,8 @@ RUN --mount=type=cache,target=/var/cache/apt \
 RUN mkdir /opt/build
 COPY . /opt/build
 WORKDIR /opt/build
-RUN stack install --no-docker --system-ghc
-RUN stack install --no-docker --system-ghc pandoc
-RUN stack install --no-docker --system-ghc pandoc-plot
+RUN --mount=type=cache,target=/root/.stack    \
+    stack install --no-docker --system-ghc && \
+    stack install --no-docker --system-ghc pandoc && \
+    stack install --no-docker --system-ghc pandoc-plot
 RUN ./test.sh
