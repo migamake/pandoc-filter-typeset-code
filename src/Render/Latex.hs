@@ -1,18 +1,55 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ViewPatterns      #-}
 -- | Render analyzed input into LaTeX table.
-module Render.Latex(latexFromColSpans, latexInline, latexPackages, subscripts) where
+module Render.Latex(latexFromColSpans, latexInline, latexPackages, subAndSuperscripts) where
 
 import           Data.Text(Text)
 import qualified Data.Text as T
-import           Data.Char(isAlpha)
+import           Data.Char(isAlpha, isAsciiLower, isAsciiUpper, isDigit)
 
 import           Text.LaTeX.Base.Syntax(protectText)
+import           Data.Maybe (fromMaybe)
 
 import           Alignment ( Align(..) )
 import           Render.Common(TokensWithColSpan)
 import           Token(MyTok(..))
 import           Util(unbrace)
+
+-- | Protect special LaTeX characters for use in math mode.
+--   Handles Haskell operators with backslashes that Skylighting doesn't tokenize properly.
+protectTextMath :: Text -> Text
+protectTextMath = processText
+  where
+    processText :: Text -> Text
+    processText t
+      | T.null t = ""
+      -- Handle specific multi-character operators first
+      | "\\\\" `T.isPrefixOf` t = "\\setminus " <> processText (T.drop 2 t)
+      | "\\/" `T.isPrefixOf` t = "\\land " <> processText (T.drop 2 t)
+      | "/\\" `T.isPrefixOf` t = "\\lor " <> processText (T.drop 2 t)
+      -- Handle lambda: backslash followed by letter/digit
+      | Just ('\\', rest) <- T.uncons t
+      , Just (nextChar, _) <- T.uncons rest
+      , isAlphaNum nextChar = "\\lambda " <> processText rest
+      -- Handle standalone backslash followed by operator chars
+      | Just ('\\', rest) <- T.uncons t = "\\backslash " <> processText rest
+      -- Handle other special chars
+      | otherwise =
+          let (c, rest) = fromMaybe (' ', "") $ T.uncons t
+          in escapeChar c <> processText rest
+
+    escapeChar :: Char -> Text
+    escapeChar '#'  = "\\#"
+    escapeChar '$'  = "\\$"
+    escapeChar '%'  = "\\%"
+    escapeChar '&'  = "\\&"
+    escapeChar '_'  = "\\_"
+    escapeChar '{'  = "\\{"
+    escapeChar '}'  = "\\}"
+    escapeChar c    = T.singleton c
+
+    isAlphaNum :: Char -> Bool
+    isAlphaNum c = isAsciiLower c || isAsciiUpper c || isDigit c
 
 -- | Given a number of table columns,
 --   and a list of lists of colspans for each table row,
@@ -72,16 +109,24 @@ latexInline  = T.concat
              . preformatTokens
 
 -- | Add subscripts and superscripts to variable names.
---   "_" is subscript, and "__" is superscript.vim 
-subscripts :: Text -> Text
-subscripts ""  = " "
-subscripts "_" = "\\_"
-subscripts t   = segments t
+--   "_" is subscript, and "__" is superscript.
+--   Superscripts nest their remaining content recursively.
+subAndSuperscripts :: Text -> Text
+subAndSuperscripts ""  = " "
+subAndSuperscripts "_" = "\\_"
+subAndSuperscripts t   = case T.splitOn "_" t of
+  [] -> ""
+  (x:xs) -> x <> processSegments xs
   where
-    segments = foldr1 addSubscript . T.splitOn "_"
-    -- | Tags the second argument with superscript "^" or subscript "_"
-    addSubscript :: Text -> Text -> Text
-    addSubscript t tsub = mconcat [t, "\\textsubscript{", tsub, "}"]
+    -- Process segments after splitting by "_"
+    -- Empty string indicates double underscore (superscript)
+    processSegments :: [Text] -> Text
+    processSegments [] = ""
+    processSegments ("":rest) = case rest of
+      [] -> ""  -- Trailing "__"
+      _  -> let remainingText = T.intercalate "_" rest
+            in "\\textsuperscript{" <> subAndSuperscripts remainingText <> "}"
+    processSegments (x:xs) = "\\textsubscript{" <> x <> "}" <> processSegments xs
 
 -- Workaround with joinEscapedOperators til w consider spaces only.
 -- | Render a simple token.
@@ -117,11 +162,13 @@ formatToken (TOperator,">>"    ) = mathop "gg"
 formatToken (TOperator,">>>"   ) = mathop "ggg"
 formatToken (TOperator,"<<"    ) = mathop "ll"
 formatToken (TOperator,"<<<"   ) = mathop "lll"
-formatToken (TOther,   "λ"     ) = mathop "lambda" -- Haskell only?
+formatToken (TOperator,"\\\\"  ) = mathop "setminus" -- MUST come before single backslash!
+formatToken (TOperator,"\\"    ) = mathop "lambda" -- Lambda from Skylighting tokenizer (as operator)
+formatToken (TOther,   "\\"    ) = mathop "lambda" -- Lambda from Skylighting tokenizer (as other)
+formatToken (TOther,   "λ"     ) = mathop "lambda" -- Lambda from Haskell tokenizer
 --formatToken (TOperator,"-<"    ) = mathop "prec"
 formatToken (TOther,   "-<"    ) = mathop "prec"
 formatToken (TOther,   ">-"    ) = mathop "succ"
-formatToken (TOperator,"\\\\"  ) = mathop "setminus"
 formatToken (TOther   ,"<-"    ) = mathop "gets"
 formatToken (TOperator,">="    ) = mathop "geq"
 formatToken (TOperator,"<="    ) = mathop "leq"
@@ -155,11 +202,11 @@ formatToken (TVar,     "omega" ) = mathop "omega"
 formatToken (TVar,     "pi"    ) = mathop "pi"
 formatToken (TVar,     "tau"   ) = mathop "tau"
 formatToken (TVar,     "rho"   ) = mathop "rho"
-formatToken (TVar    , txt     ) | T.any isAlpha txt = "\\textit{" <> subscripts txt <> "}"
+formatToken (TVar    , txt     ) | T.any isAlpha txt = "\\textit{" <> subAndSuperscripts txt <> "}"
 formatToken (TVar,     txt     ) = "\\textit{"     <> protectText txt  <> "}"
 formatToken (TNum    , kwd     ) = protectText kwd
 formatToken (TKeyword, kwd     ) = "\\textbf{"     <> protectText kwd  <> "}"
-formatToken (TCons,    cons    ) = "\\textsc{"     <> subscripts cons <> "}"
+formatToken (TCons,    cons    ) = "\\textsc{"     <> subAndSuperscripts cons <> "}"
 --formatToken (TOperator,"\\"    ) = mathop "lambda"
 formatToken (TTikz mark,_      ) = mathop $ "tikzMark{" <> mark <> "}"
 --formatToken (TOther,   "`"     ) = mathop "textasciigrave"
@@ -175,7 +222,7 @@ formatToken (TOther,   "{"     ) = protectText "{"
 --formatToken (TOther,   "="     ) = "\\scalebox{1.7}{" <> mathop "=" <> "}"
 formatToken (TOther,   "="     ) = "=\\joinrel="
 -- formatToken (TBlank,   txt  ) = "\\textit{\\textcolor{gray}{" <> protectText txt <> "}}"
-formatToken (_,  txt           ) = "\\textrm{"     <> protectText txt  <> "}"
+formatToken (_,  txt           ) = "\\textrm{"     <> protectTextMath txt  <> "}"
 
 mathop :: Text -> Text
 mathop code = "\\" <> code

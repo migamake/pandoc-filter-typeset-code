@@ -73,3 +73,4 @@ tests:
     - pandoc-filter-indent
     - QuickCheck
     - quickcheck-text
+    - ghc-lib-parser

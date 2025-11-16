@@ -1,15 +1,15 @@
 {-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE PartialTypeSignatures #-}
-{-# LANGUAGE ViewPatterns          #-}
 {-# LANGUAGE FlexibleContexts      #-}
 -- | Skylighting code tokenizer
-module Token.Skylighting(lookupTokenizer, tokenizer) where
+module Token.Skylighting(lookupTokenizer, tokenizer, fixBackslashOperators) where
 
 import Control.Arrow(first)
 import Text.Pandoc.JSON ()
 import Text.Pandoc.Definition ()
-import Data.Maybe(listToMaybe, catMaybes)
+import Data.Maybe(listToMaybe, mapMaybe)
 import Data.String (IsString)
+import Data.Char(isAsciiLower, isAsciiUpper, isDigit)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Prelude hiding(getLine)
@@ -31,8 +31,7 @@ rightToMaybe (Right result) = Just result
 --   Picks the first match.
 lookupTokenizer :: [Text] -> Maybe Syntax
 lookupTokenizer  = listToMaybe
-                 . catMaybes
-                 . fmap (Sky.syntaxByShortName Sky.defaultSyntaxMap)
+                 . mapMaybe (Sky.syntaxByShortName Sky.defaultSyntaxMap)
 
 -- * Haskell tokenizer frontend
 -- | Attempt to tokenize input,
@@ -44,6 +43,7 @@ tokenizer :: Syntax -- Skylighting syntax description
           -> Maybe [(MyTok, MyLoc, Text)]
 tokenizer syntax =
     fmap ( joinEscapedOperators
+         . fixBackslashOperators  -- Fix Skylighting's incorrect splitting of backslash operators
          . splitTokens
          . restoreLocations
          . recognizeTokens )
@@ -73,7 +73,6 @@ skyTok BuiltInTok        = TKeyword
 skyTok PreprocessorTok   = TBlank
 skyTok CommentTok        = TBlank
 skyTok DocumentationTok  = TBlank
-skyTok CommentTok        = TBlank
 skyTok OperatorTok       = TOperator
 skyTok SpecialCharTok    = TOperator
 skyTok RegionMarkerTok   = TOperator
@@ -125,7 +124,7 @@ splitTokens = mconcat
         withNewLines = fmap (<>"\n") (init split)
                     <> [last split]
         withLocs :: [Text] -> [(MyTok, MyLoc, Text)]
-        withLocs (l:ls) = (TBlank, set mark True $ loc, l)
+        withLocs (l:ls) = (TBlank, set mark True loc, l)
                         : zipWith mkEntry [line+1..] ls
         mkEntry :: Int -> Text -> (MyTok, MyLoc, Text)
         mkEntry i t = (TBlank, MyLoc i 1 True, t)
@@ -135,6 +134,49 @@ splitTokens = mconcat
 
 unmark :: Field2 a a MyLoc MyLoc => a -> a
 unmark = set (_2 % mark) False
+
+-- | Fix Skylighting's incorrect tokenization of backslash operators.
+--   Skylighting incorrectly splits operators like \+, \>, \/, etc.
+--   This function merges them back together to match Haskell tokenizer behavior.
+fixBackslashOperators :: [(MyTok, MyLoc, Text)] -> [(MyTok, MyLoc, Text)]
+fixBackslashOperators [] = []
+-- Standalone backslash followed by backslash -> \\ set difference operator
+fixBackslashOperators ((TOther, loc, "\\"):(TOther, _, "\\"):remaining) =
+  (TOperator, loc, "\\\\") : fixBackslashOperators remaining
+-- Standalone backslash followed by operator symbol -> merge as operator (\+, \>, etc.)
+fixBackslashOperators ((TOther, loc, "\\"):(TOperator, _, op):remaining) =
+  (TOperator, loc, "\\" <> op) : fixBackslashOperators remaining
+-- Standalone backslash followed by variable -> lambda, keep separate
+fixBackslashOperators (tok1@(TOther, _, "\\"):rest@((TVar, _, _):_)) =
+  tok1 : fixBackslashOperators rest
+-- Standalone backslash followed by alphanumeric TOther -> lambda, keep separate
+fixBackslashOperators (tok1@(TOther, loc1, "\\"):tok2@(TOther, loc2, txt):rest)
+  | not (T.null txt) && isAlphaStart txt =
+  tok1 : fixBackslashOperators (tok2:rest)
+-- Token ending with backslash followed by / -> merge as \/ operator
+fixBackslashOperators ((TOther, loc, txt):(TOperator, _, "/"):remaining)
+  | "\\" `T.isSuffixOf` txt =
+  (TOperator, loc, T.init txt <> "\\/") : fixBackslashOperators remaining
+-- Operator / followed by token starting with backslash -> merge as /\ operator
+fixBackslashOperators ((TOperator, loc, "/"):(TOther, _, txt):remaining)
+  | "\\" `T.isPrefixOf` txt =
+  (TOperator, loc, "/\\") : fixBackslashOperators ((TOther, loc, T.tail txt):remaining)
+-- Token starting with backslash followed by dot (lambda notation like \f.)
+fixBackslashOperators (tok1@(TOther, _, txt):tok2@(TOperator, _, "."):rest)
+  | "\\" `T.isPrefixOf` txt && T.length txt > 1 && isAlphaRest (T.tail txt) =
+  tok1 : tok2 : fixBackslashOperators rest
+-- Default case - keep token as is
+fixBackslashOperators (tok:rest) =
+  tok : fixBackslashOperators rest
+
+-- Helper functions for fixBackslashOperators
+isAlphaStart :: Text -> Bool
+isAlphaStart txt = case T.uncons txt of
+  Just (c, _) -> isAsciiLower c || isAsciiUpper c
+  Nothing -> False
+
+isAlphaRest :: Text -> Bool
+isAlphaRest = T.all (\c -> isAsciiLower c || isAsciiUpper c || isDigit c)
 
 -- FIXME: use no-indent-mark instead.
 joinEscapedOperators :: (Eq c, IsString c, Semigroup c) => [(MyTok, MyLoc, c)] -> [(MyTok, MyLoc, c)]

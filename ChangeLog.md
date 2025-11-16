@@ -2,6 +2,11 @@
 
 ## Unreleased changes
 
+  - Fix lambda expressions rendering in LaTeX math mode
+  - Fix backslash operators (\, \\, \/, /\, etc.) rendering
+  - Add preprocessing for Skylighting tokenizer to handle split backslash operators
+  - Rename subscripts to subAndSuperscripts with proper superscript support
+  - Add comprehensive test suite for lambda expressions and backslash operators
   - >< as Cartesian product (\times)
   - :-> as \longmapsto
 

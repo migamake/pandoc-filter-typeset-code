@@ -14,12 +14,59 @@ import Token(MyTok(..)
             ,MyLoc(..)
             ,Tokenized)
 import Token.Haskell(tokenizer)
-import Render.Latex(subscripts)
+import Render.Latex(subAndSuperscripts)
 import qualified Render.Debug
 import FindColumns
 import Render.ColSpan
 import Alignment(Processed)
 import GHC.Stack
+
+import qualified LambdaSpec
+
+-- * Property tests for subAndSuperscripts
+
+-- | Property: Single underscore should produce \textsubscript
+prop_single_underscore_is_subscript :: Property
+prop_single_underscore_is_subscript =
+  forAll (listOf1 $ elements ['a'..'z']) $ \prefix ->
+  forAll (listOf1 $ elements ['a'..'z']) $ \suffix ->
+    let input = T.pack prefix <> "_" <> T.pack suffix
+        output = subAndSuperscripts input
+    in counterexample ("Input: " ++ T.unpack input) $
+       counterexample ("Output: " ++ T.unpack output) $
+       "\\textsubscript{" `T.isInfixOf` output
+
+-- | Property: Double underscore should produce \textsuperscript
+prop_double_underscore_is_superscript :: Property
+prop_double_underscore_is_superscript =
+  forAll (listOf1 $ elements ['a'..'z']) $ \prefix ->
+  forAll (listOf1 $ elements ['a'..'z']) $ \suffix ->
+    let input = T.pack prefix <> "__" <> T.pack suffix
+        output = subAndSuperscripts input
+    in counterexample ("Input: " ++ T.unpack input) $
+       counterexample ("Output: " ++ T.unpack output) $
+       "\\textsuperscript{" `T.isInfixOf` output
+
+-- | Property: Output should not contain raw underscores (except escaped \_)
+prop_no_raw_underscores :: Property
+prop_no_raw_underscores =
+  forAll (resize 20 $ listOf (elements (['a'..'z'] ++ ['_']))) $ \str ->
+    not (null str) && str /= "_" ==>
+      let input = T.pack str
+          output = subAndSuperscripts input
+          -- Count underscores that aren't part of \_ escape
+          hasRawUnderscore = T.any (== '_') $ T.replace "\\_" "" output
+      in counterexample ("Input: " ++ T.unpack input) $
+         counterexample ("Output: " ++ T.unpack output) $
+         label "processed" $
+         not hasRawUnderscore
+
+-- | Property: Empty input or single underscore should be handled correctly
+prop_edge_cases :: Property
+prop_edge_cases = conjoin
+  [ subAndSuperscripts "" === " "
+  , subAndSuperscripts "_" === "\\_"
+  ]
 
 prop_tokenizer str = case tokenizer str of
                        Nothing -> label "cannot lex" $ True
@@ -78,12 +125,32 @@ a `shouldBe` b = do
 
 main :: IO ()
 main = do
-    (subscripts "alpha_beta")        `shouldBe` "alpha\\textsubscript{beta}"
-    (subscripts "alpha__beta")       `shouldBe` "alpha\\textsuperscript{beta}"
-    (subscripts "alpha__gamma_beta") `shouldBe` "alpha\\textsuperscript{gamma\\textsubscript{beta}}"
+    putStrLn "=== Subscript/Superscript Tests ==="
+    (subAndSuperscripts "alpha_beta")        `shouldBe` "alpha\\textsubscript{beta}"
+    (subAndSuperscripts "alpha__beta")       `shouldBe` "alpha\\textsuperscript{beta}"
+    (subAndSuperscripts "alpha__gamma_beta") `shouldBe` "alpha\\textsuperscript{gamma\\textsubscript{beta}}"
+
+    putStrLn "\n=== Example Problems ==="
     problem " a\na"
     problem "--"
     problem "a\n a"
+    problem "\n a"   -- prop_tableColumns failure case 1
+    problem " a\na"  -- prop_tableColumns failure case 2 (duplicate but documented)
+
+    putStrLn "\n=== Lambda Expression Tests ==="
+    LambdaSpec.runAllTests
+
+    putStrLn "\n=== SubAndSuperscripts Property Tests ==="
+    putStrLn "  Testing single underscore → subscript"
+    quickCheckWith stdArgs { maxSuccess = 100 } prop_single_underscore_is_subscript
+    putStrLn "  Testing double underscore → superscript"
+    quickCheckWith stdArgs { maxSuccess = 100 } prop_double_underscore_is_superscript
+    putStrLn "  Testing no raw underscores in output"
+    quickCheckWith stdArgs { maxSuccess = 100 } prop_no_raw_underscores
+    putStrLn "  Testing edge cases"
+    quickCheck prop_edge_cases
+
+    putStrLn "\n=== General Property Tests ==="
     quickCheck   prop_tokenizer
     quickCheck   prop_debug_renderer_text_length
     quickCheck $ withMaxSuccess 10000  prop_colspans -- is it sufficient?
