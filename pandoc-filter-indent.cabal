@@ -7,10 +7,12 @@ cabal-version: 1.12
 name:           pandoc-filter-indent
 version:        0.3.3.0
 synopsis:       Pandoc filter formatting Haskell code fragments using GHC lexer.
-description:    Formats marked code fragments, and allows `pandoc` to safely process rest of your literate program:
+description:    Formats marked code fragments, and allows `pandoc` to safely process rest of your literate program.
+                Mark code blocks with .haskell attribute:
                 .
                 > ```{.haskell}
-                .
+                > -- your code here
+                > ```
                 .
                 Usage:
                 .
@@ -26,10 +28,10 @@ description:    Formats marked code fragments, and allows `pandoc` to safely pro
                 and creates tabular code structures from indentation.
                 It uses GHC lexer to assure that latest features are always parsed correctly.
                 .
-                Please see the README on GitHub at <https://github.com/mgajda/pandoc-filter-indent#readme>
+                Please see the README on GitHub at <https://github.com/migamake/pandoc-filter-typeset-code#readme>
 category:       Text
-homepage:       https://github.com/mgajda/pandoc-filter-indent#readme
-bug-reports:    https://github.com/mgajda/pandoc-filter-indent/issues
+homepage:       https://github.com/migamake/pandoc-filter-typeset-code#readme
+bug-reports:    https://github.com/migamake/pandoc-filter-typeset-code/issues
 author:         Michał J. Gajda
 maintainer:     mjgajda@migamake.com
 copyright:      AllRightsReserved
@@ -38,11 +40,12 @@ license-file:   LICENSE
 build-type:     Simple
 extra-source-files:
     README.md
+    DESCRIPTION.md
     ChangeLog.md
 
 source-repository head
   type: git
-  location: https://github.com/mgajda/pandoc-filter-indent
+  location: https://github.com/migamake/pandoc-filter-typeset-code
 
 library
   exposed-modules:
