@@ -30,14 +30,28 @@ tokenizer :: Text -- ^ Input text of code block
 tokenizer  = fmap ( joinEscapedOperators
                   . splitTokens
                   . restoreLocations
+                  . splitUnicodeLambda
                   . fmap recognizeToken)
            . tokenizeHaskell
+
+-- | Split tokens that start with unicode lambda (λ) into separate tokens.
+--   E.g., "λx" becomes ["λ", "x"]
+--   Note: λ is not officially part of GHC's UnicodeSyntax extension,
+--   but is widely used as a de facto standard for backslash in lambdas.
+splitUnicodeLambda :: [(MyTok, Text)] -> [(MyTok, Text)]
+splitUnicodeLambda [] = []
+splitUnicodeLambda ((tok, txt):rest)
+  | "λ" `T.isPrefixOf` txt && T.length txt > 1 =
+      (TOther, "λ") : splitUnicodeLambda ((tok, T.drop 1 txt):rest)
+  | otherwise = (tok, txt) : splitUnicodeLambda rest
 
 -- | Recognize token using both token type from `ghc-lib`,
 --   and text content.
 --   Only TikZ marks are recognized by looking up text content.
 recognizeToken :: (Token, Text) -> (MyTok, Text)
 recognizeToken (SymbolTok,  "\\") = -- special treatment for lambda
+  (TOther,               "λ"    )
+recognizeToken (SymbolTok,  "λ") = -- Unicode lambda (de facto standard)
   (TOther,               "λ"    )
 recognizeToken (CommentTok, tokText@(unTikzMark -> Just mark)) =
   (TTikz mark,           tokText)

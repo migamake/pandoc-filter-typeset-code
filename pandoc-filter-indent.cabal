@@ -104,6 +104,9 @@ test-suite pandoc-filter-indent-test
   main-is: Spec.hs
   other-modules:
       LambdaSpec
+      StarOperatorTest
+      TokenizerTest
+      UnicodeOperatorSpec
       Paths_pandoc_filter_indent
   hs-source-dirs:
       test

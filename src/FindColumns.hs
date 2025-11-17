@@ -108,11 +108,13 @@ withMarked f aList = apply <$> aList
     apply entry                             = entry `annex` Nothing
 
 -- | Compute all alignment columns existing and their positions in the text column space.
+--   Note: Deduplicates by text column position only (not by alignment type)
+--   to ensure consistency with tableColumns and avoid gaps in table column indices.
 extraColumns :: Field2 a a  MyLoc         MyLoc
              => Field5 a a (Maybe Align) (Maybe Align)
              => [a] -> [(Int, Maybe Align)]
 extraColumns =
-    nubSorted
+    nubSortedBy (compare `on` fst)  -- Deduplicate by text column position only
   . filter hasAlignment
   . map extract
   where

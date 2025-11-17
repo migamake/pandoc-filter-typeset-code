@@ -23,6 +23,7 @@ import Alignment(Processed)
 import GHC.Stack
 
 import qualified LambdaSpec
+import qualified UnicodeOperatorSpec
 
 -- * Property tests for subAndSuperscripts
 
@@ -140,6 +141,9 @@ main = do
 
     putStrLn "\n=== Lambda Expression Tests ==="
     LambdaSpec.runAllTests
+
+    putStrLn "\n=== GHC UnicodeSyntax Operator Tests ==="
+    UnicodeOperatorSpec.runAllTests
 
     putStrLn "\n=== SubAndSuperscripts Property Tests ==="
     putStrLn "  Testing single underscore → subscript"

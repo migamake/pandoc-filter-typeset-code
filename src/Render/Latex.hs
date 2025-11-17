@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ViewPatterns      #-}
+{-# LANGUAGE PatternSynonyms   #-}
 -- | Render analyzed input into LaTeX table.
 module Render.Latex(latexFromColSpans, latexInline, latexPackages, subAndSuperscripts) where
 
@@ -128,11 +129,29 @@ subAndSuperscripts t   = case T.splitOn "_" t of
             in "\\textsuperscript{" <> subAndSuperscripts remainingText <> "}"
     processSegments (x:xs) = "\\textsubscript{" <> x <> "}" <> processSegments xs
 
+-- | Pattern for operator-like tokens (TOperator or TOther).
+--   Both tokenizers produce different token types for the same operators:
+--   - Haskell tokenizer: most operators → TOther
+--   - Skylighting tokenizer: some operators → TOperator (e.g., *, >-, -<, >>-, -<<)
+--   This pattern synonym eliminates duplication when handling the same operator from both tokenizers.
+pattern OpOrOther :: Text -> (MyTok, Text)
+pattern OpOrOther txt <- (matchOpOrOther -> Just txt)
+
+matchOpOrOther :: (MyTok, Text) -> Maybe Text
+matchOpOrOther (TOperator, txt) = Just txt
+matchOpOrOther (TOther,    txt) = Just txt
+matchOpOrOther _                = Nothing
+
 -- Workaround with joinEscapedOperators til w consider spaces only.
 -- | Render a simple token.
 formatToken :: (MyTok, Text) -> Text
 formatToken (TOperator,unbrace -> Just op) = "(" <> formatToken (TOperator, op) <> ")"
+-- GHC UnicodeSyntax extension operators
+-- See: https://downloads.haskell.org/ghc/latest/docs/users_guide/exts/unicode_syntax.html
+-- Note: ∀ can be TKeyword (Haskell) or TOther (Skylighting)
 formatToken (TKeyword, "forall") = mathop "forall"
+formatToken (TKeyword, "∀"     ) = mathop "forall"
+formatToken (OpOrOther "∀") = mathop "forall"
 --formatToken (TVar,     "mempty") = mathop "emptyset"
 formatToken (TVar,     "bottom") = mathop "bot"
 formatToken (TVar,  "undefined") = mathop "perp"
@@ -163,21 +182,43 @@ formatToken (TOperator,">>>"   ) = mathop "ggg"
 formatToken (TOperator,"<<"    ) = mathop "ll"
 formatToken (TOperator,"<<<"   ) = mathop "lll"
 formatToken (TOperator,"\\\\"  ) = mathop "setminus" -- MUST come before single backslash!
-formatToken (TOperator,"\\"    ) = mathop "lambda" -- Lambda from Skylighting tokenizer (as operator)
-formatToken (TOther,   "\\"    ) = mathop "lambda" -- Lambda from Skylighting tokenizer (as other)
-formatToken (TOther,   "λ"     ) = mathop "lambda" -- Lambda from Haskell tokenizer
---formatToken (TOperator,"-<"    ) = mathop "prec"
-formatToken (TOther,   "-<"    ) = mathop "prec"
-formatToken (TOther,   ">-"    ) = mathop "succ"
-formatToken (TOther   ,"<-"    ) = mathop "gets"
+formatToken (OpOrOther "\\") = mathop "lambda" -- Lambda (both tokenizers)
+formatToken (OpOrOther "λ")  = mathop "lambda" -- Unicode lambda (TOther from Skylighting)
+formatToken (TVar,     "λ"     ) = mathop "lambda" -- Unicode lambda (TVar from Haskell tokenizer)
+formatToken (OpOrOther "-<") = mathop "prec" -- Left arrow-tail
+formatToken (OpOrOther "⤙")  = mathop "prec" -- Unicode -<
+formatToken (OpOrOther ">-") = mathop "succ" -- Right arrow-tail
+formatToken (OpOrOther "⤚")  = mathop "succ" -- Unicode >-
+formatToken (OpOrOther "<-") = mathop "gets" -- Left arrow
+formatToken (OpOrOther "←")  = mathop "gets" -- Unicode <-
 formatToken (TOperator,">="    ) = mathop "geq"
 formatToken (TOperator,"<="    ) = mathop "leq"
 formatToken (TOperator,"!="    ) = mathop "ne"
 formatToken (TOperator,"<->"   ) = mathop "updownarrow"
 formatToken (TOperator,"<|>"   ) = mathop "leftrightarrow"
---formatToken (TOperator,"->"    ) = mathop "to"
-formatToken (TOther,   "->"    ) = mathop "to"
-formatToken (TOther,   "=>"    ) = mathop "Rightarrow"
+formatToken (OpOrOther "->") = mathop "to"
+formatToken (OpOrOther "→")  = mathop "to"      -- Unicode ->
+formatToken (OpOrOther "=>") = mathop "Rightarrow"
+formatToken (OpOrOther "⇒")  = mathop "Rightarrow" -- Unicode =>
+formatToken (OpOrOther "::") = mathop ":"       -- Type annotation
+formatToken (OpOrOther "∷")  = mathop ":"       -- Unicode ::
+-- Note: * is rendered as \times (multiplication) since modern Haskell uses Type for kinds
+-- TODO: Make this configurable for legacy code that uses * for kinds
+formatToken (OpOrOther "*")  = mathop "times"   -- Multiplication (star for old kind syntax)
+formatToken (OpOrOther "★")  = mathop "star"    -- Unicode kind star
+formatToken (OpOrOther ">>-") = mathop "rr"     -- Right double arrow-tail
+formatToken (OpOrOther "⤜")  = mathop "rr"      -- Unicode >>-
+formatToken (OpOrOther "-<<") = mathop "ll"     -- Left double arrow-tail
+formatToken (OpOrOther "⤛")  = mathop "ll"      -- Unicode -<<
+formatToken (OpOrOther "⊸")  = mathop "multimap" -- Unicode linear arrow %1->
+formatToken (OpOrOther "(|") = mathop "llparenthesis" -- Parallel array bracket (stmaryrd)
+formatToken (OpOrOther "⦇")  = mathop "llparenthesis" -- Unicode (|
+formatToken (OpOrOther "|)") = mathop "rrparenthesis" -- Parallel array bracket (stmaryrd)
+formatToken (OpOrOther "⦈")  = mathop "rrparenthesis" -- Unicode |)
+formatToken (OpOrOther "[|") = mathop "llbracket" -- Quasiquote bracket (stmaryrd)
+formatToken (OpOrOther "⟦")  = mathop "llbracket" -- Unicode [|
+formatToken (OpOrOther "|]") = mathop "rrbracket" -- Quasiquote bracket (stmaryrd)
+formatToken (OpOrOther "⟧")  = mathop "rrbracket" -- Unicode |]
 formatToken (TOperator,"==>"   ) = mathop "implies"
 formatToken (TOperator,"|->"   ) = mathop "mapsto"
 formatToken (TOperator,"|=>"   ) = mathop "Mapsto" -- requires stmaryrd

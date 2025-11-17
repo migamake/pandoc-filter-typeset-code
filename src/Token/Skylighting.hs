@@ -44,13 +44,27 @@ tokenizer :: Syntax -- Skylighting syntax description
 tokenizer syntax =
     fmap ( joinEscapedOperators
          . fixBackslashOperators  -- Fix Skylighting's incorrect splitting of backslash operators
+         . fixBracketOperators    -- Fix Skylighting's splitting of bracket operators like (|, |), [|, |]
          . splitTokens
          . restoreLocations
+         . splitUnicodeLambda     -- Split unicode lambda from following characters
          . recognizeTokens )
     . rightToMaybe
     . Sky.tokenize tokenizerOpts syntax
   where
     tokenizerOpts = Sky.TokenizerConfig Sky.defaultSyntaxMap False
+
+-- | Split tokens that start with unicode lambda (λ) into separate tokens.
+--   E.g., "λx" becomes ["λ", "x"]
+--   Note: λ is not officially part of GHC's UnicodeSyntax extension,
+--   but is widely used as a de facto standard for backslash in lambdas.
+splitUnicodeLambda :: [[(MyTok, Text)]] -> [[(MyTok, Text)]]
+splitUnicodeLambda = map (concatMap splitToken)
+  where
+    splitToken (tok, txt)
+      | "λ" `T.isPrefixOf` txt && T.length txt > 1 =
+          [(TOther, "λ"), (tok, T.drop 1 txt)]
+      | otherwise = [(tok, txt)]
 
 -- | Recognize tokens from all source lines.
 recognizeTokens :: [SourceLine] -> [[(MyTok, Text)]]
@@ -134,6 +148,27 @@ splitTokens = mconcat
 
 unmark :: Field2 a a MyLoc MyLoc => a -> a
 unmark = set (_2 % mark) False
+
+-- | Fix Skylighting's tokenization of bracket operators used in GHC extensions.
+--   Skylighting splits operators like (|, |), [|, |] which should be single tokens.
+--   This function merges them back together.
+fixBracketOperators :: [(MyTok, MyLoc, Text)] -> [(MyTok, MyLoc, Text)]
+fixBracketOperators [] = []
+-- (| parallel array bracket
+fixBracketOperators ((TOther, loc, "("):(TOperator, _, "|"):remaining) =
+  (TOperator, loc, "(|") : fixBracketOperators remaining
+-- |) parallel array bracket
+fixBracketOperators ((TOperator, loc, "|"):(TOther, _, ")"):remaining) =
+  (TOperator, loc, "|)") : fixBracketOperators remaining
+-- [| quasiquote bracket
+fixBracketOperators ((TOther, loc, "["):(TOperator, _, "|"):remaining) =
+  (TOperator, loc, "[|") : fixBracketOperators remaining
+-- |] quasiquote bracket
+fixBracketOperators ((TOperator, loc, "|"):(TOther, _, "]"):remaining) =
+  (TOperator, loc, "|]") : fixBracketOperators remaining
+-- Default case
+fixBracketOperators (tok:rest) =
+  tok : fixBracketOperators rest
 
 -- | Fix Skylighting's incorrect tokenization of backslash operators.
 --   Skylighting incorrectly splits operators like \+, \>, \/, etc.
