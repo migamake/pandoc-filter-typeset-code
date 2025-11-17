@@ -116,7 +116,7 @@ formatToken (TVar,     "top"      ) = "⊤"
 formatToken (TKeyword,  kwd       ) = b $ toHtml kwd
 formatToken (TVar,      v         ) = i $ toHtml v
 formatToken (TCons,     v         ) = span (toHtml v)
-                                      ! style ("font-variant: small-caps;")
+                                      ! style "font-variant: small-caps;"
 formatToken (TTikz mark,_         ) = span ""
                                       ! id (toValue mark)
 formatToken (_,         txt       ) = toHtml txt

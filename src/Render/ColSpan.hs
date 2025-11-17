@@ -33,7 +33,7 @@ colspans ps = fmap ( fmap extractTokens -- extract token and text content from e
             $ sortBy  (compare `on` getLineCol) ps
   where
     maxCol :: Int
-    maxCol = maximum $ map getAlignCol $ ps
+    maxCol = maximum $ map getAlignCol ps
     sameColSpan :: Processed -> Processed -> Bool
     sameColSpan tok1 tok2 = case view alignPos tok2 of
                               Nothing | getLine tok1 == getLine tok2 -> True
@@ -53,8 +53,7 @@ colspans ps = fmap ( fmap extractTokens -- extract token and text content from e
 numColSpans :: [Processed] -> Int
 numColSpans ps = case colspansPerLine of
                    []   -> 1
-                   n:ns -> assert (all (n==) ns)
-                         $ n
+                   n:ns -> assert (all (n==) ns) n
   where
     colspansPerLine :: [Int]
     colspansPerLine = map (sum . map (\(_,c,_) -> c)) . colspans $ ps

@@ -9,6 +9,13 @@
   - Add comprehensive test suite for lambda expressions and backslash operators
   - >< as Cartesian product (\times)
   - :-> as \longmapsto
+  - Code cleanup: remove unused LANGUAGE pragmas, add missing pragmas
+  - Code cleanup: use newtype for single-field records, use concatMap and elemIndex
+  - Code cleanup: remove redundant $ operators and brackets
+  - Code cleanup: fix pattern matching style (otherwise -> _)
+  - Code cleanup: use hPrint instead of hPutStrLn . show
+  - Refactor test suite: extract common test pattern into helper function
+  - Improve test readability: reduce code duplication in property tests
 
 ## Release history
 

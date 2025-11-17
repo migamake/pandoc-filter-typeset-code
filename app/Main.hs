@@ -1,6 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ViewPatterns      #-}
-{-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE NamedFieldPuns    #-}
 module Main where
 
@@ -22,7 +21,7 @@ import           Render.Latex           (latexPackages)
 import           System.IO
 import Debug.Trace(trace)
 
-data Options = Options {
+newtype Options = Options {
     inlineSyntax :: Text
   } deriving (Show)
 
@@ -39,8 +38,8 @@ runner :: Maybe Format -> Pandoc -> IO Pandoc
 runner (fromMaybe (Format "text") -> format) input@(Pandoc (Meta meta) ast) =
   do
     hPutStrLn stderr $ "Output format: " <> show format
-    hPutStrLn stderr $ show opts
-    hPutStrLn stderr $ show $ Map.lookup "header-includes" meta
+    hPrint stderr opts
+    hPrint stderr (Map.lookup "header-includes" meta)
     let top = if format `elem` [Format "latex", Format "tex", Format "beamer"]
                  then Pandoc (Meta $ Map.alter modifyIncludes "header-includes" meta) ast
                  else input
@@ -84,8 +83,8 @@ blockFormatter :: Options
                -> Format -- ^ Output format, defaults to "plain" if not found
                -> Block
                -> Block
-blockFormatter _opts format (CodeBlock attrs content) = 
-  case fmap findColumns $ getTokenizer attrs content of
+blockFormatter _opts format (CodeBlock attrs content) =
+  case findColumns <$> getTokenizer attrs content of
     Just processed -> renderBlock format attrs processed
     Nothing        -> CodeBlock          attrs content -- fallback
 -- Do not touch other blocks than 'CodeBock'

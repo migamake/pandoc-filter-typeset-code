@@ -50,7 +50,7 @@ render ps = T.concat $ go ps
         alignMarker  = case view alignPos tok of
                          Just (ACenter, _) -> "^"
                          Just _            -> "|"
-                         otherwise         -> ""
+                         _                 -> ""
 
 -- | Text content with markers for markers inside it.
 textWithMarkers tColumns nextCol tok = 

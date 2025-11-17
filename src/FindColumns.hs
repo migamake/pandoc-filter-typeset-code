@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE PartialTypeSignatures #-}
 {-# LANGUAGE ViewPatterns          #-}
-{-# LANGUAGE TypeSynonymInstances  #-}
+{-# LANGUAGE ExplicitForAll        #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE FlexibleContexts      #-}
 -- | Find alignment columns.
@@ -12,7 +12,7 @@ import Text.Pandoc.Definition ()
 import Data.Function  (on)
 import Data.String    (fromString, IsString)
 import Data.Text      (Text)
-import Data.List      (groupBy, sortBy, sort, group, findIndex)
+import Data.List      (groupBy, sortBy, sort, group, elemIndex)
 import Prelude hiding (getLine)
 import Optics.Core
 import Data.Tuple.Optics
@@ -55,11 +55,9 @@ findColumns =
       columnIndices
     . withExtraColumns
     . sortBy (compare `on` getLineCol)
-    . concat
-    . map markBoundaries
+    . concatMap markBoundaries
     . grouping getCol
-    . concat
-    . map addLineIndent
+    . concatMap addLineIndent
     . grouping getLine
 
 -- | Extract both line and column where a token starts.
@@ -69,9 +67,8 @@ getLineCol x = (getLine x, getCol x)
 -- | Mark alignment boundaries.
 markBoundaries :: [Unanalyzed] -> [Aligned]
 markBoundaries = map markIndent
-               . concat
                -- . (\b -> trace ("ALIGNED: " <> show b) b)
-               . map alignBlock
+               . concatMap alignBlock
                -- . (\b -> trace ("BLOCKS: " <> show b) b)
                . blocks
                . sortBy (compare `on` getLine)
@@ -186,7 +183,7 @@ columnIndices (allAligned, map fst -> markerColumns) = map addIndex allAligned
         mod (Just  a) =
              Just (a, colIndex)
           where
-            colIndex = case findIndex (==getCol aligned) markerColumns of
+            colIndex = case elemIndex (getCol aligned) markerColumns of
                          Nothing -> error $ "Did not find the index for column " <> show (getCol aligned) <> " within " <> show markerColumns
                          Just i  -> i
 

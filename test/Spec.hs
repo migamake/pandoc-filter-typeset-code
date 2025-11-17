@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE FlexibleContexts #-}
 -- | Test suite
 module Main where
 
@@ -69,12 +70,12 @@ prop_edge_cases = conjoin
   ]
 
 prop_tokenizer str = case tokenizer str of
-                       Nothing -> label "cannot lex" $ True
+                       Nothing -> label "cannot lex" True
                        Just t  -> label "lexed" $ length t <= T.length str
 
 prop_debug_renderer_text_length input =
     case debug of
-      Nothing -> label "cannot lex" $ True
+      Nothing -> label "cannot lex" True
       Just  t -> label "lexed"
                $ all (uncurry (<=))
                $ zip (extract input)
@@ -87,7 +88,7 @@ prop_debug_renderer_text_length input =
 
 prop_colspans input =
     case debug of
-      Nothing -> label "cannot lex" $ True
+      Nothing -> label "cannot lex" True
       Just  t -> label "lexed" $
                  sameNumber t
   where
@@ -100,14 +101,14 @@ prop_colspans input =
 
 prop_tableColumns input = T.any (not . Data.Char.isSpace) input ==>
   case tokenizer input of
-    Nothing     -> label "cannot lex" $ True
+    Nothing     -> label "cannot lex" True
     Just tokens | all ((TBlank==) . view _1) tokens
-                -> label "only blanks" $ True
-    Just tokens -> 
+                -> label "only blanks" True
+    Just tokens ->
       case findColumns tokens of
-        [] -> label "empty" $ True
+        [] -> label "empty" True
         t  -> case sumColSpans t of
-                []  -> label "no colspans"  $ True
+                []  -> label "no colspans" True
                 c:_ -> label "tableColumns" $ c == length (tableColumns t)
   where
     extract :: T.Text -> [Int]
@@ -126,9 +127,9 @@ a `shouldBe` b = do
 main :: IO ()
 main = do
     putStrLn "=== Subscript/Superscript Tests ==="
-    (subAndSuperscripts "alpha_beta")        `shouldBe` "alpha\\textsubscript{beta}"
-    (subAndSuperscripts "alpha__beta")       `shouldBe` "alpha\\textsuperscript{beta}"
-    (subAndSuperscripts "alpha__gamma_beta") `shouldBe` "alpha\\textsuperscript{gamma\\textsubscript{beta}}"
+    subAndSuperscripts "alpha_beta"        `shouldBe` "alpha\\textsubscript{beta}"
+    subAndSuperscripts "alpha__beta"       `shouldBe` "alpha\\textsuperscript{beta}"
+    subAndSuperscripts "alpha__gamma_beta" `shouldBe` "alpha\\textsuperscript{gamma\\textsubscript{beta}}"
 
     putStrLn "\n=== Example Problems ==="
     problem " a\na"

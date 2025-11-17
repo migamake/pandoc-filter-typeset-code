@@ -106,7 +106,7 @@ splitTokens = mconcat
         withNewLines = fmap (<>"\n") (init split)
                     <> [last split]
         withLocs :: [Text] -> [(MyTok, MyLoc, Text)]
-        withLocs (l:ls) = (TBlank, set mark True $ loc, l)
+        withLocs (l:ls) = (TBlank, set mark True loc, l)
                         : zipWith mkEntry [line+1..] ls
         mkEntry :: Int -> Text -> (MyTok, MyLoc, Text)
         mkEntry i t = (TBlank, MyLoc i 1 True, t)

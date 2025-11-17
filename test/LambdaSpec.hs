@@ -159,40 +159,39 @@ backslashOperatorTestCases =
   , ("backslash operator >", "\\> x", "backslash")
   ]
 
+-- | Helper function to test both tokenizers with a predicate
+--   Reduces duplication in property tests
+testBothTokenizers :: Text -> String -> (Text -> Property) -> Property
+testBothTokenizers code descr check =
+  let toLatex tokens = latexInline $ map (\(t,_,txt) -> (t, txt)) tokens
+      haskellResult = fmap toLatex (Haskell.tokenizer code)
+      skyResult = Sky.lookupTokenizer ["haskell"] >>= \syntax ->
+                    fmap toLatex (Sky.tokenizer syntax code)
+  in counterexample descr $
+     case (haskellResult, skyResult) of
+       (Just h, Just s) ->
+         counterexample ("Haskell output: " ++ T.unpack h) $
+         counterexample ("Skylighting output: " ++ T.unpack s) $
+         label "both tokenized" $
+         check h .&&. check s
+       (Just h, Nothing) ->
+         counterexample ("Haskell output: " ++ T.unpack h) $
+         label "only haskell" $
+         check h
+       (Nothing, Just s) ->
+         counterexample ("Skylighting output: " ++ T.unpack s) $
+         label "only skylighting" $
+         check s
+       _ -> label "neither tokenized" $ property True
+
 -- | Property: Test that both tokenizers produce expected LaTeX commands
 prop_backslash_operators :: Property
 prop_backslash_operators =
   forAll (elements backslashOperatorTestCases) $ \(name, code, expected) ->
-    let haskellResult = Haskell.tokenizer code >>= \tokens ->
-          Just $ latexInline $ map (\(t,_,txt) -> (t, txt)) tokens
-
-        skyResult = Sky.lookupTokenizer ["haskell"] >>= \syntax ->
-          Sky.tokenizer syntax code >>= \tokens ->
-            Just $ latexInline $ map (\(t,_,txt) -> (t, txt)) tokens
-
-        expectedCmd = "\\" <> T.pack expected
-        hasExpected txt = expectedCmd `T.isInfixOf` txt
-
-    in counterexample ("Test: " ++ name) $
-       counterexample ("Code: " ++ T.unpack code) $
-       counterexample ("Expected: " ++ expected) $
-       case (haskellResult, skyResult) of
-         (Just h, Just s) ->
-           counterexample ("Haskell output: " ++ T.unpack h) $
-           counterexample ("Skylighting output: " ++ T.unpack s) $
-           label ("both tokenized: " ++ name) $
-           hasExpected h .&&. hasExpected s
-         (Just h, Nothing) ->
-           counterexample ("Haskell output: " ++ T.unpack h) $
-           label ("only haskell: " ++ name) $
-           hasExpected h
-         (Nothing, Just s) ->
-           counterexample ("Skylighting output: " ++ T.unpack s) $
-           label ("only skylighting: " ++ name) $
-           hasExpected s
-         (Nothing, Nothing) ->
-           label ("neither tokenized: " ++ name) $
-           property True
+    let expectedCmd = "\\" <> T.pack expected
+        hasExpected txt = property $ expectedCmd `T.isInfixOf` txt
+        descr = "Test: " ++ name ++ "\nCode: " ++ T.unpack code ++ "\nExpected: " ++ expected
+    in testBothTokenizers code descr hasExpected
 
 -- * Property Tests
 
@@ -200,31 +199,9 @@ prop_backslash_operators =
 prop_lambda_renders_correctly :: Property
 prop_lambda_renders_correctly =
   forAll genLambda $ \lambdaExpr ->
-    let haskellResult = Haskell.tokenizer lambdaExpr >>= \tokens ->
-          Just $ latexInline $ map (\(t,_,txt) -> (t, txt)) tokens
-
-        skyResult = Sky.lookupTokenizer ["haskell"] >>= \syntax ->
-          Sky.tokenizer syntax lambdaExpr >>= \tokens ->
-            Just $ latexInline $ map (\(t,_,txt) -> (t, txt)) tokens
-
-        hasLambda output = "\\lambda" `T.isInfixOf` output
-
-    in counterexample ("Lambda expression: " ++ T.unpack lambdaExpr) $
-       counterexample ("Haskell output: " ++ show haskellResult) $
-       counterexample ("Skylighting output: " ++ show skyResult) $
-       case (haskellResult, skyResult) of
-         (Just h, Just s) ->
-           label "both tokenized" $
-           hasLambda h .&&. hasLambda s
-         (Just h, Nothing) ->
-           label "only haskell" $
-           hasLambda h
-         (Nothing, Just s) ->
-           label "only skylighting" $
-           hasLambda s
-         (Nothing, Nothing) ->
-           label "neither tokenized" $
-           property True
+    let hasLambda output = property $ "\\lambda" `T.isInfixOf` output
+        descr = "Lambda expression: " ++ T.unpack lambdaExpr
+    in testBothTokenizers lambdaExpr descr hasLambda
 
 -- | Property: Both tokenizers should produce the same number of \lambda commands
 prop_tokenizers_agree_on_lambda_count :: Property
@@ -256,65 +233,22 @@ prop_tokenizers_agree_on_lambda_count =
 prop_no_textbackslash :: Property
 prop_no_textbackslash =
   forAll genLambda $ \lambdaExpr ->
-    let haskellResult = Haskell.tokenizer lambdaExpr >>= \tokens ->
-          Just $ latexInline $ map (\(t,_,txt) -> (t, txt)) tokens
-
-        skyResult = Sky.lookupTokenizer ["haskell"] >>= \syntax ->
-          Sky.tokenizer syntax lambdaExpr >>= \tokens ->
-            Just $ latexInline $ map (\(t,_,txt) -> (t, txt)) tokens
-
-        hasBadBackslash txt = "\\textbackslash" `T.isInfixOf` txt ||
+    let hasBadBackslash txt = "\\textbackslash" `T.isInfixOf` txt ||
                               "\\backslashx" `T.isInfixOf` txt ||
                               "\\backslash{}" `T.isInfixOf` txt
-
-    in counterexample ("Lambda expression: " ++ T.unpack lambdaExpr) $
-       case (haskellResult, skyResult) of
-         (Just h, Just s) ->
-           counterexample ("Haskell output: " ++ T.unpack h) $
-           counterexample ("Skylighting output: " ++ T.unpack s) $
-           label "both tokenized" $
-           not (hasBadBackslash h) .&&. not (hasBadBackslash s)
-         (Just h, Nothing) ->
-           counterexample ("Haskell output: " ++ T.unpack h) $
-           label "only haskell" $
-           not (hasBadBackslash h)
-         (Nothing, Just s) ->
-           counterexample ("Skylighting output: " ++ T.unpack s) $
-           label "only skylighting" $
-           not (hasBadBackslash s)
-         _ -> label "neither tokenized" $ property True
+        noBadBackslash txt = property $ not (hasBadBackslash txt)
+        descr = "Lambda expression: " ++ T.unpack lambdaExpr
+    in testBothTokenizers lambdaExpr descr noBadBackslash
 
 -- | Property: Double backslash should render as \setminus, not lambda
 prop_setdiff_not_lambda :: Property
 prop_setdiff_not_lambda =
   forAll genSetDiff $ \expr ->
-    let haskellResult = Haskell.tokenizer expr >>= \tokens ->
-          Just $ latexInline $ map (\(t,_,txt) -> (t, txt)) tokens
-
-        skyResult = Sky.lookupTokenizer ["haskell"] >>= \syntax ->
-          Sky.tokenizer syntax expr >>= \tokens ->
-            Just $ latexInline $ map (\(t,_,txt) -> (t, txt)) tokens
-
-        hasSetminus txt = "\\setminus" `T.isInfixOf` txt
+    let hasSetminus txt = "\\setminus" `T.isInfixOf` txt
         hasLambda txt = "\\lambda" `T.isInfixOf` txt
-
-    in counterexample ("Set difference expression: " ++ T.unpack expr) $
-       case (haskellResult, skyResult) of
-         (Just h, Just s) ->
-           counterexample ("Haskell output: " ++ T.unpack h) $
-           counterexample ("Skylighting output: " ++ T.unpack s) $
-           label "both tokenized" $
-           (hasSetminus h .&&. hasSetminus s) .&&.
-           (not (hasLambda h) .&&. not (hasLambda s))
-         (Just h, Nothing) ->
-           counterexample ("Haskell output: " ++ T.unpack h) $
-           label "only haskell" $
-           hasSetminus h .&&. not (hasLambda h)
-         (Nothing, Just s) ->
-           counterexample ("Skylighting output: " ++ T.unpack s) $
-           label "only skylighting" $
-           hasSetminus s .&&. not (hasLambda s)
-         _ -> label "neither tokenized" $ property True
+        checkSetdiff txt = property $ hasSetminus txt && not (hasLambda txt)
+        descr = "Set difference expression: " ++ T.unpack expr
+    in testBothTokenizers expr descr checkSetdiff
 
 -- | Property: Tokenizers should handle the same code similarly
 prop_tokenizers_compatible :: Property
