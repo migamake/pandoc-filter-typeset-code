@@ -1,6 +1,6 @@
 # Changelog for pandoc-filter-indent
 
-## Unreleased changes
+## 0.3.3.0 Nov 17 2025
 
 ### Unicode and Operator Support
   - Add comprehensive support for GHC UnicodeSyntax extension operators
